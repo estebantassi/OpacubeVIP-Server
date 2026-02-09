@@ -1,0 +1,36 @@
+const db = require("../../config/db/db");
+const Token = require("../../helpers/token");
+
+module.exports = (app) => {
+    app.get("/auth/refresh/update", async (req, res) => {
+        const token = req?.cookies?.token_refresh;
+
+        const data = await Token.GetData(token, Token.Type.REFRESH);
+        const authorized = data != null;
+
+        if (authorized) {
+            try {
+                await db.query(`
+                    DELETE FROM tokens
+                    WHERE useruuid=$1 AND jti=$2 AND type=$3
+                `, [data.useruuid, data.jti, Token.Type.REFRESH]);
+            } catch (err) { if (process.env.LOGERRORS === 'true') console.error(err); }
+
+            const user = {
+                'uuid': data.useruuid,
+                'username': data.username
+            };
+
+            let accessToken = new Token(user, Token.Type.ACCESS);
+            if (!await accessToken.Save(res)) return res.status(400).json({ message: "Error creating new token" });
+
+            let refreshToken = new Token(user, Token.Type.REFRESH);
+            if (!await refreshToken.Save(res)) return res.status(400).json({ message: "Error creating new token" });
+
+            accessToken = null;
+            refreshToken = null;
+        }
+
+        return res.status(200).json({ authorized });
+    });
+};
