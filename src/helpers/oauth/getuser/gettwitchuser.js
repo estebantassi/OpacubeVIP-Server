@@ -26,12 +26,12 @@ const GetTwitchUser = async (redirectURI, codeVerifier, code) => {
             },
         });
 
-        //twitchUser.profile_image_url
+        const avatarURL = userResponse.data.data[0].profile_image_url || null;
         const username = userResponse.data.data[0].display_name || userResponse.data.data[0].login || "User";
         const email = userResponse.data.data[0].email;
         const verified = true;
 
-        return { username, email, verified };
+        return { username, email, verified, avatarURL };
     } catch (err) {
         if (process.env.LOGERRORS === 'true') console.error(err);
         return null;

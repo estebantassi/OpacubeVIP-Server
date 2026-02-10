@@ -7,12 +7,17 @@ const db = require("../../../config/db/db");
 const { Encrypt } = require("../../../helpers/encryption");
 const Token = require("../../../helpers/token");
 const crypto = require('crypto');
+const { default: axios } = require('axios');
+const { CompressImage } = require('../../../helpers/compressimage');
+const bucket = require('../../../config/gcs/gcs');
+const { GetImage } = require('../../../helpers/gcstools');
 
 const clientURL = process.env.CLIENT_URL;
 const serverURL = process.env.SERVER_URL;
 const emailHashVersion = process.env.EMAIL_HASH_SECRET_VERSION;
 const emailEncryptedVersion = process.env.EMAIL_ENCRYPTION_SECRET_VERSION;
 const secure = process.env.SECURE;
+
 
 module.exports = (app) => {
     app.get("/auth/oauth/login/callback", async (req, res) => {
@@ -64,49 +69,95 @@ module.exports = (app) => {
         const emailHash = crypto.createHmac('sha256', process.env["EMAIL_HASH_SECRET_V" + emailHashVersion]).update(user.email).digest('hex');
         const emailEncrypted = Encrypt(emailEncryptedVersion + ":" + user.email, process.env['EMAIL_ENCRYPTION_SECRET_V' + emailEncryptedVersion]);
 
+        const connection = await db.connect();
         try {
-            const request = await db.query(`
-                INSERT INTO users (created_at, hashed_email, encrypted_email, auth_method, username)
-                VALUES ($1, $2, $3, $4, $5)
+
+            let avatar;
+            if (user.avatarURL)
+            {
+                const avatarReq = await axios.get(user.avatarURL, { responseType: 'arraybuffer' });
+                avatar = await CompressImage(avatarReq.data, "avatar");
+                if (!avatar.data) return res.redirect(errorURL + encodeURIComponent(avatar.message));
+            }
+
+            await connection.query('BEGIN');
+            const request = await connection.query(`
+                INSERT INTO users (created_at, hashed_email, encrypted_email, auth_method, username, avatar)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 ON CONFLICT (hashed_email)
                 DO UPDATE SET hashed_email = users.hashed_email
-                RETURNING uuid, username, auth_method, (xmax = 0) AS inserted;
-            `, [new Date().toISOString(), emailHash, emailEncrypted, providerPretty, user.username]);
+                RETURNING uuid, username, auth_method, avatar, (xmax = 0) AS inserted;
+            `, [new Date().toISOString(), emailHash, emailEncrypted, providerPretty, user.username, avatar?.data != null]);
 
-            if (providerPretty != request.rows[0].auth_method) return res.redirect(errorURL + encodeURIComponent('You already have an account associated with this email using another service (' + request.rows[0].auth_method + ')'));
+            if (providerPretty != request.rows[0].auth_method) {
+                await connection.query('ROLLBACK');
+                return res.redirect(errorURL + encodeURIComponent('You already have an account associated with this email using another service (' + request.rows[0].auth_method + ')'));
+            }
 
-            // if (request.rows[0].inserted)
-            // {
-            //     SAVE PICTURE publicuserinfo.avatar
-            //
-            // } else fetch it
+            const uuid = request.rows[0].uuid;
 
             user = {
-                'uuid': request.rows[0].uuid,
-                'username': request.rows[0].username
+                uuid,
+                'username': request.rows[0].username,
+                avatar: "empty"
             };
 
             let accessToken = new Token(user, Token.Type.ACCESS);
-            if (!await accessToken.Save(res)) return res.redirect(clientURL + `/login?oauth=error&error=${encodeURIComponent("Couldn't create a token")}`);
-
+            if (!await accessToken.Save(res, connection)) {
+                await connection.query('ROLLBACK');
+                return res.redirect(errorURL + encodeURIComponent("Couldn't create a token"));
+            }
             let refreshToken = new Token(user, Token.Type.REFRESH, { "accessjti": accessToken.content.jti });
-            if (!await refreshToken.Save(res)) return res.redirect(clientURL + `/login?oauth=error&error=${encodeURIComponent("Couldn't create a token")}`);
+            if (!await refreshToken.Save(res, connection)) {
+                await connection.query('ROLLBACK');
+                return res.redirect(errorURL + encodeURIComponent("Couldn't create a token"));
+            }
 
-            accessToken = null;
-            refreshToken = null;
+            //Insert image last to minimize the chances of having it uploaded on error.
+            if (request.rows[0].inserted && avatar?.data)
+            {
+                try {
+                    await bucket.file(`users/${uuid}/avatar`).save(avatar.data, {
+                        metadata: {
+                            contentType: 'image/webp',
+                            cacheControl: 'no-store'
+                        }
+                    });
+                } catch (err)
+                {
+                    if (process.env.LOGERRORS === 'true') console.error(err);
+                    await connection.query('ROLLBACK');
+                    return res.redirect(errorURL + encodeURIComponent("Error with Google Cloud Storage"));
+                }
+            }
+
+            avatar = request.rows[0].avatar ? `users/${uuid}/avatar` : `Default/avatar`;
+
+            user.avatar = await GetImage(avatar);
+            if (!user.avatar) {
+                await connection.query('ROLLBACK');
+                return res.redirect(errorURL + encodeURIComponent("Error fetching image"));
+            }
+
+            const hostname = new URL(clientURL).hostname;
+            const cookieDomain = "." + hostname;
 
             res.cookie('user', JSON.stringify(user), {
-                domain: ".opacube.vip",
+                domain: cookieDomain,
                 sameSite: 'Strict',
                 secure: secure,
                 maxAge: process.env.TOKEN_EXP_REFRESH * 60 * 60 * 1000,
                 httpOnly: false
             });
 
+            await connection.query('COMMIT');
             return res.redirect(clientURL + "/profile?oauth=success");
         } catch (err) {
             if (process.env.LOGERRORS === 'true') console.error(err);
+            await connection.query('ROLLBACK');
             return res.redirect(errorURL + encodeURIComponent("Internal server error"));
+        } finally {
+            connection.release();
         }
     });
 };

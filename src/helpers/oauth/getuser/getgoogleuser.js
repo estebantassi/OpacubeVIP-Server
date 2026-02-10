@@ -26,12 +26,12 @@ const GetGoogleUser = async (redirectURI, codeVerifier, code) => {
         });
         const payload = ticket.getPayload();
 
-        //SAVE PICTURE payload.picture
+        const avatarURL = payload.picture.replace(/=s\d+(-c)?$/, "=s512-c") || null;
         const username = payload.name || payload.given_name || "User";
         const email = payload.email;
         const verified = payload.email_verified;
 
-        return { username, email, verified };
+        return { username, email, verified, avatarURL };
     } catch (err) {
         if (process.env.LOGERRORS === 'true') console.error(err);
         return null;

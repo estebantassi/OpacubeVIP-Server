@@ -25,12 +25,14 @@ const GetDiscordUser = async (redirectURI, codeVerifier, code) => {
             }
         });
 
-        //https://cdn.discordapp.com/avatars/userResponse.data.id/userResponse.data.avatar.{format}?size=SIZE
-        const username = userResponse.data.global_name || userResponse.data.username || "User";
-        const email = userResponse.data.email;
-        const verified = userResponse.data.verified;
+        const user = userResponse.data;
+        const format = user?.avatar?.startsWith("a_") ? "gif" : "png";
+        const defaultAvatar = Number(BigInt(user.id) >> 22n) % 6;
+        const avatarURL = user?.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${format}?size=512` : `https://cdn.discordapp.com/embed/avatars/${defaultAvatar}.png`;const username = user.global_name || user.username || "User";
+        const email = user.email;
+        const verified = user.verified;
 
-        return {username, email, verified};
+        return {username, email, verified, avatarURL};
     } catch (err) {
         if (process.env.LOGERRORS === 'true') console.error(err);
         return null;

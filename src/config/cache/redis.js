@@ -1,5 +1,7 @@
 const redis = require('redis');
 
+const appName = process.env.APPNAME;
+
 const redisClient = redis.createClient({
     url: process.env.REDIS_URL,
 });
@@ -16,17 +18,17 @@ async function connectRedis() {
 
 async function getCachedValue(key) {
     await connectRedis();
-    return await redisClient.get("opacubevip/" + key);
+    return await redisClient.get(appName + "/" + key);
 }
 
 async function setCachedValue(key, ttlInSeconds, value) {
     await connectRedis();
-    await redisClient.setEx("opacubevip/" + key, ttlInSeconds, value);
+    await redisClient.setEx(appName + "/" + key, ttlInSeconds, value);
 }
 
 async function deleteCachedValue(key) {
     await connectRedis();
-    await redisClient.del("opacubevip/" + key);
+    await redisClient.del(appName + "/" + key);
 }
 
 module.exports = {

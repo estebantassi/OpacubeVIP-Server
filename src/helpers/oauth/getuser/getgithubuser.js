@@ -33,12 +33,12 @@ const GetGithubUser = async (redirectURI, codeVerifier, code) => {
 
         const primaryEmailObj = emailResponse.data.find(e => e.primary && e.verified);
 
-        //userResponse.data.avatar_url
+        const avatarURL = userResponse.data.avatar_url ? userResponse.data.avatar_url + "?s=512" : null;
         const username = userResponse.data.name || userResponse.data.login || "User";
         const email = primaryEmailObj.email;
         const verified = primaryEmailObj != null;
 
-        return { username, email, verified };
+        return { username, email, verified, avatarURL };
     } catch (err) {
         if (process.env.LOGERRORS === 'true') console.error(err);
         return null;

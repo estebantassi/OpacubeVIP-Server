@@ -29,12 +29,12 @@ class Token {
         this.type = type;
     }
 
-    async Save(res) {
+    async Save(res, database) {
         try {
             if (this.type == Token.Type.ACCESS) {
                 await setCachedValue(`tokens/${this.type}/${this.content.useruuid}/${this.content.jti}`, this.duration * 60 * 60 + 10, "1");
             } else {
-                await db.query(`
+                await database.query(`
                     INSERT INTO tokens (useruuid, type, jti, expires_at)
                     VALUES ($1, $2, $3, $4)
                 `, [this.content.useruuid, this.type, this.content.jti, this.exp]);

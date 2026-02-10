@@ -22,13 +22,10 @@ module.exports = (app) => {
             };
 
             let accessToken = new Token(user, Token.Type.ACCESS);
-            if (!await accessToken.Save(res)) return res.status(400).json({ message: "Error creating new token" });
+            if (!await accessToken.Save(res, db)) return res.status(400).json({ message: "Error creating new token" });
 
             let refreshToken = new Token(user, Token.Type.REFRESH);
-            if (!await refreshToken.Save(res)) return res.status(400).json({ message: "Error creating new token" });
-
-            accessToken = null;
-            refreshToken = null;
+            if (!await refreshToken.Save(res, db)) return res.status(400).json({ message: "Error creating new token" });
         }
 
         return res.status(200).json({ authorized });

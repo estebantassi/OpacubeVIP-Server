@@ -29,12 +29,12 @@ const GetGitlabUser = async (redirectURI, codeVerifier, code) => {
             audience: clientid,
         });
 
-        //SAVE PICTURE payload.picture
+        const avatarURL = payload.picture || null;
         const username = payload.nickname || payload.preferred_username || "User";
         const email = payload.email;
         const verified = payload.email_verified;
 
-        return { username, email, verified };
+        return { username, email, verified, avatarURL };
     } catch (err) {
         if (process.env.LOGERRORS === 'true') console.error(err);
         return null;
