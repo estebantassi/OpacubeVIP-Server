@@ -29,7 +29,7 @@ module.exports = (app) => {
             `, [emailHash]);
 
             if (!request.rows[0]) return res.status(400).json({message: "User not found"});
-            if (request.rows[0].auth_method != "Custom") return res.status(400).json({message: 'You already have an account associated with this email using another service (' + request.rows[0].auth_method + ')'});
+            if (request.rows[0].auth_method != "OpacubeVIP") return res.status(400).json({message: 'You already have an account associated with this email using another service (' + request.rows[0].auth_method + ')'});
             if (!request.rows[0].verified) return res.status(400).json({message: "User not verified"});
 
             const srpSalt = request.rows[0].srp_salt;
@@ -47,7 +47,7 @@ module.exports = (app) => {
             return res.status(500).json({ message: "Internal server error" });
         }
     });
-    
+
     app.post("/auth/login", async (req, res) => {
         const email = req?.body?.email?.toLowerCase();
         const srpProof = req?.body?.srpProof;
