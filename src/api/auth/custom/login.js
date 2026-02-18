@@ -5,6 +5,8 @@ const srp = require('secure-remote-password/server');
 const { setCachedValue, getCachedValue, deleteCachedValue } = require('../../../config/cache/redis');
 const { GetImage } = require('../../../helpers/gcstools');
 const { validateEmail } = require('../../../helpers/validate/validate');
+const { ValidateTurnstile } = require('../../../helpers/validate/turnstile');
+const { GetClientIP } = require('../../../helpers/ip');
 
 const emailHashVersion = process.env.EMAIL_HASH_SECRET_VERSION;
 
@@ -13,6 +15,11 @@ module.exports = (app) => {
         const email = req?.body?.email?.toLowerCase();
         if (!validateEmail(email)) return res.status(400).json({ message: "Invalid email format" });
         const emailHash = crypto.createHmac('sha256', process.env["EMAIL_HASH_SECRET_V" + emailHashVersion]).update(email).digest('hex');
+
+        //TURNSTILE
+        const ip = GetClientIP(req);
+        const turnstile = ValidateTurnstile(req?.body?.turnstileToken, ip);
+        if (!turnstile) return res.status(400).json({ message: "Error resolving CAPTCHA" });
 
         try{
             const request = await db.query(`
