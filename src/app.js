@@ -20,7 +20,7 @@ app.use(cors({
 app.use(cookieParser());
 app.use(bodyParser.json({ limit: '10mb' }));
 
-require('./routes')(app);
+require('./routes')(app); 
 
 app.get('/', (req, res) => res.send('Server is running!'));
 
